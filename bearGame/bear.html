@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title></title>
+    <script src="jquery-1.11.1.min.js"></script>
+</head>
+<body>
+<div id="container" style="border:1px solid; cursor:none; width:480px; height:320px;">
+    <canvas id="canvas" width="480" height="320" >
+        your browser dosen't support HTML5!
+    </canvas>
+    <img id="btnImgStart" style="position: absolute; left: 200px; top: 200px; cursor: pointer; float: left; display: block;" src="images/START-Button.png">
+</div>
+<script>
+    //global variables
+    var backgroundForestImg = new Image();   //森林背景图
+    var mushroomImg = new Image();           //蘑菇图
+    var ctx;                                 //2d画布
+    var screenWidth;                         //画布宽度
+    var screenHeight;                        //画布高度
+    var bearEyesClosedImg = new Image();
+    var speed = 2;
+    var horizontalSpeed = speed;
+    var verticalSpeed = -speed;
+    var bearAngle = 2;
+    var flowerImg = new Image();
+    var leafImg = new Image();
+    var acornImg = new Image();
+    var gameRunning = false;         //游戏运行状态
+    var gameloopId;                  //记住循环的变量
+    var lives=3;                     //3条生命数
+    var livesImages = new Array();  //生命图片数组
+    var score =0;
+    var scoreImg = new Image();
+
+    //public game Object - basic Object
+    function GameObject(){
+        this.x = 0;
+        this.y = 0;
+        this.image = null;
+    }
+    //Mushroom Object inherate GameObject
+    function Mushroom(){};
+    Mushroom.prototype = new GameObject();  //inheritate Game Object
+    //instance
+    var mushroom = new Mushroom();
+    // Animal Class inheritate GameObject
+    function Animal(){};
+    Animal.prototype = new GameObject();
+    Animal.prototype.angle = 0;
+    var animal = new Animal();
+
+    var prizes = new Array();
+    //Price Object
+    function Prize(){};
+    Prize.prototype = new GameObject();
+    Prize.prototype.row = 0;
+    Prize.prototype.col = 0;
+    Prize.prototype.hit = false;
+    Prize.prototype.point = 0;   //score
+
+    function initPrizes(){
+        var count = 0;
+        for(var x=0;x<3;x++){
+            for( var y=0;y<23;y++){
+                var prize = new Prize();
+                if(x == 0 ){ prize.image = flowerImg; prize.point = 3; }
+                if(x == 1){ prize.image = acornImg; prize.point = 2; }
+                if(x == 2){ prize.image = leafImg; prize.point = 1; }
+                prize.row = x;
+                prize.col = y;
+                prize.x = 20 * prize.col+10;
+                prize.y = 30 * prize.row +40;
+                prizes[count] = prize;
+                count++;
+            }
+        }
+    }
+
+    function drawScore(){
+        ctx.drawImage(scoreImg,screenWidth-(scoreImg.width),0);
+        ctx.font = "12pt Arial";
+        ctx.fillText(""+score,425,25);
+    }
+
+    function drawPrizers(){
+        for(var i=0; i<prizes.length;i++){
+            currentPrize = prizes[i];
+            if(!currentPrize.hit){
+                ctx.drawImage(currentPrize.image,prizes[i].x,prizes[i].y);
+            }
+        }
+        if(allPrizeHit()){ gameOver(); }
+    }
+
+    function hasAnimalHitPrize(){
+        for(var i=0;i<prizes.length;i++){
+            var prize = prizes[i];
+            if(!prize.hit){
+                if(checkIntersect(prize,animal,0)){
+                    prize.hit = true;
+                    verticalSpeed = speed;
+                    score += prize.point;
+                }
+            }
+        }
+    }
+
+    function allPrizeHit(){
+        for(var c=0; c<prizes.length; c++){
+            checkPrize = prizes[c];
+            if(checkPrize.hit == false)
+                return false;
+        }
+        return true;
+    }
+
+    //Collision
+    function hasAnimalHitEdge(){
+        //right edge
+        if(animal.x > screenWidth-animal.image.width){
+            if(horizontalSpeed > 0){
+                horizontalSpeed = -horizontalSpeed;
+            }
+        }
+        //left edge
+        if(animal.x <-10){
+            if(horizontalSpeed <0 ){
+                horizontalSpeed = -horizontalSpeed;
+            }
+        }
+        //bottom edge
+        if(animal.y > screenHeight-animal.image.height){
+            lives -= 1;
+            if(lives >0){
+                horizontalSpeed = speed;
+                verticalSpeed = -speed;
+                animal.x = parseInt(screenWidth/2);
+                animal.y = parseInt(screenHeight/2);
+                $("#btnImgStart").show();
+                toggleGameplay();
+                gameLoop();
+            }
+            if(lives<0)  gameOver();
+        }
+        //up edge
+        if(animal.y <0){
+            verticalSpeed = - verticalSpeed;
+        }
+    }
+
+    //overlap:可重叠的区域值
+    //    x- 轴                      x- 轴
+    //  A1------>B1 C1              A2------>B2 C2
+    //  +--------+   ^              +--------+   ^
+    //  | object1|   | y- 轴        | object2|   | y- 轴
+    //  |        |   |              |        |   |
+    //  +--------+  D1              +--------+  D2
+    function checkIntersect(object1,object2,overlap){
+        A1 = object1.x + overlap;
+        B1 = object1.x + object1.image.width - overlap;
+        C1 = object1.y + overlap;
+        D1 = object1.y + object1.image.height - overlap;
+
+        A2 = object2.x + overlap;
+        B2 = object2.x + object2.image.width - overlap;
+        C2 = object2.y + overlap;
+        D2 = object2.y + object2.image.height - overlap;
+
+        if(A1 > A2 && A1 < B2 || B1 > A2 && B1 < B2) {  //假如他们在x-轴重叠
+            if(C1 > C2 && C1 < D1|| D1 > C2 && D1 < D2){  //判断y-轴重叠
+                //碰撞
+                return true;
+            }
+        }
+        return false
+    }
+
+    function hasAnimalHitMushroom(){
+        if(checkIntersect(animal,mushroom,5)){
+            //假如碰撞的位置属于蘑菇的左下位置
+            if((animal.x + animal.image.width/2) < (mushroom.x + mushroom.image.width*0.25)){
+                horizontalSpeed = -speed;//反弹
+            } //假如碰撞的位置属于蘑菇的左上位置
+            else if((animal.x + animal.image.width/2) < (mushroom.x + mushroom.image.width*0.5)){
+                //反弹速度减半
+                horizontalSpeed = -speed/2;
+            } //假如碰撞的位置属于蘑菇的右上位置
+            else if((animal.x + animal.image.width/2) < (mushroom.x + mushroom.image.width*0.75)){
+                horizontalSpeed = speed/2;
+            }else{
+                horizontalSpeed = speed;
+            }
+            verticalSpeed = -speed;//改变垂直速度。也即动物向上移动
+        }
+    }
+
+    //paint in the canvas
+    function gameLoop(){
+        ctx.clearRect(0,0,screenWidth,screenHeight);  //clear canvas
+        ctx.save();
+        ctx.drawImage(backgroundForestImg,0,0);
+        ctx.drawImage(mushroom.image,mushroom.x,mushroom.y);
+        drawPrizers();
+        drawLives();
+        drawScore();
+        animal.x += horizontalSpeed;
+        animal.y += verticalSpeed;
+        animal.angle += bearAngle;
+        ctx.translate(animal.x +(animal.image.width/2),animal.y+(animal.image.height/2));
+        ctx.rotate(animal.angle*Math.PI/180);
+        ctx.drawImage(animal.image,-(animal.image.width/2),-(animal.image.height/2));
+        ctx.restore();
+        hasAnimalHitEdge();
+        hasAnimalHitMushroom();
+        hasAnimalHitPrize();
+    }
+    //loading image
+    function loadImages(){
+        mushroomImg.src = "images/mushroom.png";
+        backgroundForestImg.src = "images/forest1.jpg";
+        bearEyesClosedImg.src = "images/bear_eyesclosed.png";//闭着眼睛的
+        flowerImg.src = "images/flower.png";
+        acornImg.src = "images/acorn.png";
+        leafImg.src = "images/leaf.png";
+        scoreImg.src = "images/score.png";
+        for(var i=0;i<6;i++){
+            livesImages[i] = new Image();
+            livesImages[i].src = "images/lives"+i+".png";
+        }
+
+        mushroom.image = mushroomImg;
+        animal.image = bearEyesClosedImg;
+
+        backgroundForestImg.onload = function(){gameLoop(); };
+    }
+
+    //start/stop game
+    function toggleGameplay(){
+        gameRunning = !gameRunning;
+        if(gameRunning){
+            $("#btnImgStart").hide();
+            gameloopId = setInterval(gameLoop,10);
+        }else{
+            clearInterval(gameloopId);
+        }
+    }
+
+    // handle event
+    function addEventHandlers(){
+        $("#container").mousemove(function(e){
+            mushroom.x = e.pageX -(mushroom.image.width/2);
+        });
+        $("#btnImgStart").click(function (){
+            toggleGameplay();
+        });
+    }
+
+    function drawLives(){
+        ctx.drawImage(livesImages[lives],0,0);
+    }
+
+    function gameOver(){
+        gameRunning = false;
+        clearInterval(gameloopId);
+        alert("Game Over");
+    }
+
+    //Initial
+    $(window).ready(function(){
+        addEventHandlers();
+        loadImages();
+        ctx = document.getElementById('canvas').getContext('2d');  //2d canvas
+        screenWidth = parseInt($("#canvas").attr("width"));
+        screenHeight = parseInt($("#canvas").attr("height"));
+        mushroom.x = parseInt(screenWidth/2);
+        mushroom.y = screenHeight -40;
+        animal.x = parseInt(screenWidth/2);
+        animal.y = parseInt(screenHeight/2);
+        initPrizes();
+        //setInterval(gameLoop,10);
+    });
+</script>
+</body>
+</html>

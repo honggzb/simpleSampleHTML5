@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title></title>
+    <script src="jquery-1.11.1.min.js"></script>
+    <style>
+    .transition {transition: [transition-property] [transition-duration] [transition-timing-function] [transition-delay];}
+    .element {
+        width: 50px;
+        background-color: purple;
+        transition: width  2s linear 0.5s, background-color 2s linear 0.5s;
+    }
+    .element:hover {
+        width: 100px;
+        background-color: red;
+    }
+    </style>
+</head>
+<body>
+<div id="container" style="border:1px solid; cursor:none; width:480px; height:320px;">
+    <canvas id="canvas" width="480" height="320" >
+        your browser doesn't support HTML5!
+    </canvas>
+    <img id="btnImgStart" style="position: absolute; left: 200px; top: 200px; cursor: pointer; float: left; display: block;" src="images/START-Button.png">
+</div>
+<script>
+    var backgroundForestImg = new Image();   //森林背景图
+    var mushroomImg = new Image();           //蘑菇图
+    var ctx;                                 //2d画布
+    var screenWidth;                         //画布宽度
+    var screenHeight;                        //画布高度
+    var bearEyesClosedImg = new Image();
+    var speed = 2;
+    var horizontalSpeed = speed;
+    var verticalSpeed = -speed;
+    var bearAngle = 2;
+
+    var flowImg = new Image();
+    var acornImg = new Image();
+    var leafImg = new Image();
+
+    var gameRunning = false;
+    var gameloopId;
+    var lives =3;
+    var liveImgs = new Array();
+
+    var score = 0;
+    var scoreImg = new Image();
+
+    function GameObject(){
+        this.x = 0;
+        this.y = 0;
+        this.image = null;
+    }
+
+    function Mushroom(){};
+    Mushroom.prototype = new GameObject();
+    var mushroom = new Mushroom();
+
+    function Bear(){};
+    Bear.prototype = new GameObject();
+    Bear.prototype.angle = 0;
+    var bear = new Bear();
+
+    var prizes = new Array();
+    function Prize(){};
+    Prize.prototype = new GameObject();
+    Prize.prototype.row =0;
+    Prize.prototype.col =0;
+    Prize.prototype.hit = false;
+    Prize.prototype.point =0;
+
+    function initPrizes(){
+        var count = 0;
+        for(var i=0;i<3;i++){
+            for(var j=0;j<23;j++){
+                var prize = new Prize();
+                if(i==0) { prize.image = flowImg; prize.point = 3;}
+                if(i==1) { prize.image = acornImg; prize.point = 2;}
+                if(i==2) { prize.image = leafImg; prize.point = 1;}
+                prize.row = i;
+                prize.col = j;
+                prize.x = 20*prize.col+10;
+                prize.y = 30*prize.row+35;
+                prizes[count] = prize;
+                count++;
+            }
+        }
+    }
+
+    function drawPrizes(){
+        for(var i=0;i<prizes.length;i++){
+            var currentPrize = prizes[i];
+            if(!currentPrize.hit){
+                ctx.drawImage(currentPrize.image,prizes[i].x,prizes[i].y);
+            }
+        }
+        if(allPrizeHit()){
+            gameOver();
+        }
+    }
+
+    function allPrizeHit(){
+        for(var i=0;i<prizes.length;i++){
+            checkePrize = prizes[i];
+            if(checkePrize.hit == false){
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function hasBearHitPrize(){
+        for(var i=0;i<prizes.length;i++){
+            var prize = prizes[i];
+            if(!prize.hit){
+                if(checkIntersect(prize,bear,0)){
+                    prize.hit = true;
+                    verticalSpeed = speed;
+                    score += prize.point;
+                }
+            }
+        }
+    }
+
+    function hasBearHitEdge(){
+        if(bear.x<-10) {
+            if(horizontalSpeed <0) horizontalSpeed = -horizontalSpeed;
+        }
+        if(bear.x > screenWidth-bear.image.width){
+            if(horizontalSpeed>0) horizontalSpeed = -horizontalSpeed;
+        }
+        if(bear.y<0) {verticalSpeed = -verticalSpeed;}
+        if(bear.y > screenHeight-bear.image.height){
+            //setTimeout(function(){
+             lives -= 1;
+            if(lives>0){
+                horizontalSpeed = speed;
+                verticalSpeed = -speed;
+                bear.x = parseInt(screenWidth/2);
+                bear.y = parseInt(screenHeight/2);
+                $("#btnImgStart").show();
+                toggleGamePlay();
+                gameLoop();
+            }
+            if(lives<=0) gameOver();
+            //},2000);
+        }
+    }
+
+    function checkIntersect(object1, object2, overlap){
+        A1 = object1.x+overlap;
+        B1 = object1.x+object1.image.width-overlap;
+        C1 = object1.y+overlap;
+        D1 = object1.y+object1.image.height -overlap;
+
+        A2 = object2.x+overlap;
+        B2 = object2.x+object1.image.width-overlap;
+        C2 = object2.y+overlap;
+        D2 = object2.y+object1.image.height -overlap;
+
+        if(A1>A2 && A1<B2 || B1>A2 && B1<B2){
+            if(C1>C2 && C1<D1 || D1>C2 && D1<D2){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function hasBearHitMushroom(){
+        if(checkIntersect(bear,mushroom,5)){
+            if((bear.x+bear.image.width/2)<(mushroom.x+mushroom.image.width*0.25)){
+                horizontalSpeed = -speed;
+            }else if((bear.x+bear.image.width/2)<(mushroom.x+mushroom.image.width*0.5)){
+                horizontalSpeed = -speed/2;
+            }else if((bear.x+bear.image.width/2)<(mushroom.x+mushroom.image.width*0.75)){
+                horizontalSpeed = speed/2;
+            }else{
+                horizontalSpeed = speed;
+            }
+            verticalSpeed = -speed;
+        }
+    }
+
+    function loadImages(){
+        mushroomImg.src = "images/mushroom.png";
+        backgroundForestImg.src = "images/forest1.jpg";
+        bearEyesClosedImg.src = "images/bear_eyesclosed.png";
+        mushroom.image = mushroomImg;
+        bear.image = bearEyesClosedImg;
+        flowImg.src = "images/flower.png";
+        acornImg.src = "images/acorn.png";
+        leafImg.src = "images/leaf.png";
+        scoreImg.src = "images/score.png";
+        for(var i=0;i<6;i++){
+            liveImgs[i] = new Image();
+            liveImgs[i].src = "images/lives" + i + ".png";
+        }
+        backgroundForestImg.onload = function(){ gameLoop();}
+    }
+
+    function gameLoop(){
+        ctx.clearRect(0,0,screenWidth,screenHeight);
+        ctx.save();
+        ctx.drawImage(backgroundForestImg,0,0);
+        ctx.drawImage(mushroom.image,mushroom.x,mushroom.y);
+        drawPrizes();
+        drawLives();
+        drawScore();
+        bear.x += horizontalSpeed;
+        bear.y += verticalSpeed;
+        bear.angle += bearAngle;
+        ctx.translate(bear.x+(bear.image.width/2),bear.y+(bear.image.height/2));
+        ctx.rotate(bear.angle*Math.PI/180);
+        ctx.drawImage(bear.image,-(bear.image.width/2),-(bear.image.height/2));
+
+        ctx.restore();
+        hasBearHitEdge();
+        hasBearHitMushroom();
+        hasBearHitPrize();
+    }
+
+    function toggleGamePlay(){
+        gameRunning = !gameRunning;
+        if(gameRunning){
+            $("#btnImgStart").hide();
+            gameloopId = setInterval(gameLoop,10);
+        }else{
+            clearInterval(gameloopId);
+        }
+    }
+
+    function gameOver(){
+        gameRunning = false;
+        clearInterval(gameloopId);
+        alert("Game Over");
+    }
+
+    function drawLives(){
+        ctx.drawImage(liveImgs[lives],0,0);
+    }
+
+    function drawScore(){
+        ctx.drawImage(scoreImg,screenWidth-(scoreImg.width),0);
+        ctx.font = "12pt Arial";
+        ctx.fillText(""+score,425,25);
+    }
+
+    function addEventHandlers(){
+        $("#container").mousemove(function(e){
+            mushroom.x = e.pageX-(mushroom.image.width/2)
+        });
+        $("#btnImgStart").click(function(){
+            toggleGamePlay();
+        });
+    }
+
+    $(window).ready(function(){
+        addEventHandlers();
+        ctx = document.getElementById("canvas").getContext("2d");
+        loadImages();
+        //alert("first load finished");
+        screenWidth = parseInt($("#canvas").attr("width"));
+        screenHeight = parseInt($("#canvas").attr("height"));
+        mushroom.x = parseInt(screenWidth/2);
+        mushroom.y = screenHeight-40;
+        bear.x = parseInt(screenWidth/2);
+        bear.y = parseInt(screenHeight/2)
+        initPrizes();
+
+        //setInterval(gameLoop, 10);
+    });
+</script>
+</body>
+</html>
